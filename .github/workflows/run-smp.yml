@@ -20,8 +20,10 @@ jobs:
           distribution: 'temurin'
       
       - name: Download SMP build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          wget -q "https://github.com/Gteeri/hopneo-server-builds/releases/download/v1.0/SMP-build.zip"
+          gh release download v1.0 --repo Gteeri/hopneo-server-builds --pattern "SMP-build.zip" --output SMP-build.zip
           unzip -q SMP-build.zip -d server
           echo "Downloaded and extracted SMP build"
           ls -la server/
