@@ -24,7 +24,7 @@ jobs:
           curl -L -o SMP-build.zip "https://github.com/Gteeri/hopneo-server-builds/releases/download/v1.0/SMP-build.zip"
           python3 -c "import zipfile; zipfile.ZipFile('SMP-build.zip').extractall('server')"
           rm -f server/folia.jar
-          curl -L -o server/paper.jar "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds/132/downloads/paper-1.21.11-132.jar"
+          curl -L -o server/paper.jar "https://github.com/Gteeri/hopneo-server-builds/releases/download/v1.0/paper-1.21.11-132.jar"
           cd server
           sed -i 's/server-port=25567/server-port=25565/' server.properties
           sed -i 's/view-distance=10/view-distance=4/' server.properties
