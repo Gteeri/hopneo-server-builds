@@ -36,20 +36,23 @@ jobs:
           rm -f plugins/HopAuction.jar
           echo "Server ready"
       
-      - name: Install ngrok
+      - name: Install bore tunnel
         run: |
-          curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok-v3-stable-linux-amd64.tgz | sudo tar -xz -C /usr/local/bin
-          ngrok version
+          curl -L https://github.com/ekzhang/bore/releases/download/v0.5.1/bore-v0.5.1-x86_64-unknown-linux-musl.tar.gz -o bore.tar.gz
+          tar -xzf bore.tar.gz
+          chmod +x bore
+          sudo mv bore /usr/local/bin/
+          bore --version
       
-      - name: Start ngrok tunnel
+      - name: Start bore tunnel
         run: |
-          ngrok tcp 25565 --log=stdout --log-format=logfmt > ngrok.log 2>&1 &
-          sleep 10
-          # Get tunnel address from ngrok API
-          TUNNEL=$(curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tunnels'][0]['public_url'])" 2>/dev/null || echo "unknown")
+          bore local 25565 --to bore.pub > bore.log 2>&1 &
+          sleep 5
+          # Get tunnel address from bore output
+          TUNNEL=$(grep -oP '[\w.-]+:\d+' bore.log | head -1 || echo "check bore.log")
           echo "NGROK_TUNNEL=$TUNNEL" >> $GITHUB_ENV
-          echo "=== Ngrok tunnel: $TUNNEL ==="
-          cat ngrok.log | tail -5
+          echo "=== Bore tunnel: $TUNNEL ==="
+          cat bore.log
       
       - name: Start server and keep alive
         run: |
