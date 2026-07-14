@@ -48,9 +48,9 @@ jobs:
         run: |
           bore local 25565 --to bore.pub > bore.log 2>&1 &
           sleep 5
-          # Get tunnel address from bore output
-          TUNNEL=$(grep -oP '[\w.-]+:\d+' bore.log | head -1 || echo "check bore.log")
-          echo "NGROK_TUNNEL=$TUNNEL" >> $GITHUB_ENV
+          # Get tunnel address - parse "listening at bore.pub:PORT"
+          TUNNEL=$(grep -oP 'bore\.pub:\d+' bore.log | head -1 || echo "check bore.log")
+          echo "TUNNEL_ADDR=$TUNNEL" >> $GITHUB_ENV
           echo "=== Bore tunnel: $TUNNEL ==="
           cat bore.log
       
@@ -78,9 +78,8 @@ jobs:
           # Show tunnel
           echo ""
           echo "============================================"
-          echo "  CONNECT TO: ${{ env.NGROK_TUNNEL }}"
-          echo "  (replace tcp:// with direct address)"
-          echo "============================================"
+          echo "  CONNECT TO: ${{ env.TUNNEL_ADDR }}"
+          echo "=============================================="
           
           # Keep alive
           HOURS=${{ github.event.inputs.duration }}
