@@ -20,16 +20,13 @@ jobs:
           distribution: 'temurin'
       
       - name: Download SMP build and replace Folia with Paper
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          gh release download v1.0 --repo Gteeri/hopneo-server-builds --pattern "SMP-build.zip" --output SMP-build.zip
+          wget -q "https://github.com/Gteeri/hopneo-server-builds/releases/download/v1.0/SMP-build.zip" -O SMP-build.zip
           python3 -c "import zipfile; zipfile.ZipFile('SMP-build.zip').extractall('server')"
-          # Replace Folia with Paper (downloads faster, loads in 30s vs 5min)
           rm -f server/folia.jar
           wget -q "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds/132/downloads/paper-1.21.11-132.jar" -O server/paper.jar
-          echo "Downloaded and extracted SMP build (Paper replaces Folia)"
-          ls -la server/
+          echo "Done"
+          ls -la server/paper.jar
       
       - name: Fix server.properties for hosting
         run: |
