@@ -19,139 +19,79 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
       
-      - name: Download SMP build and replace Folia with Paper
+      - name: Download and setup server
         run: |
           curl -L -o SMP-build.zip "https://github.com/Gteeri/hopneo-server-builds/releases/download/v1.0/SMP-build.zip"
           python3 -c "import zipfile; zipfile.ZipFile('SMP-build.zip').extractall('server')"
           rm -f server/folia.jar
           curl -L -o server/paper.jar "https://api.papermc.io/v2/projects/paper/versions/1.21.11/builds/132/downloads/paper-1.21.11-132.jar"
-          echo "Done"
-          ls -la server/paper.jar
-      
-      - name: Fix server.properties for hosting
-        run: |
           cd server
-          # Set online-mode false, port 25565, lower view distance
           sed -i 's/server-port=25567/server-port=25565/' server.properties
-          sed -i 's/view-distance=10/view-distance=6/' server.properties
-          sed -i 's/simulation-distance=10/simulation-distance=6/' server.properties
+          sed -i 's/view-distance=10/view-distance=4/' server.properties
+          sed -i 's/simulation-distance=10/simulation-distance=4/' server.properties
           sed -i 's/max-players=200/max-players=20/' server.properties
-          echo "Server port set to 25565"
-          cat server.properties | grep -E "server-port|online-mode|max-players|view-distance"
-      
-      - name: Accept EULA
-        run: |
-          cd server
           echo "eula=true" > eula.txt
+          # Remove plugins that slow down startup
+          rm -f plugins/VirtualSpawners.jar
+          rm -f plugins/HopAuction.jar
+          echo "Server ready"
       
-      - name: Install playit.gg
+      - name: Install ngrok
         run: |
-          curl -SsL https://playit-cloud.github.io/ppa/key.gpg | sudo apt-key add -
-          sudo curl -SsL -o /etc/apt/sources.list.d/playit-cloud.list https://playit-cloud.github.io/ppa/playit-cloud.list
-          sudo apt update -y
-          sudo apt install playit -y
-          echo "playit.gg installed"
+          curl -sSL https://ngrok-agent.s3.amazonaws.com/ngrok-v3-stable-linux-amd64.tgz | sudo tar -xz -C /usr/local/bin
+          ngrok version
       
-      - name: Start playit tunnel
+      - name: Start ngrok tunnel
         run: |
-          # Start playit in background
-          playit start > playit_output.txt 2>&1 &
-          PLAYIT_PID=$!
-          echo "playit PID: $PLAYIT_PID"
-          
-          # Wait for tunnel to initialize
-          sleep 15
-          
-          # Show output
-          echo "=== playit output ==="
-          cat playit_output.txt
-          
-          # Try to get tunnel address from playit
-          playit list 2>&1 || true
-          
-          # Also try to extract from logs
-          grep -oP '[\w-]+\.playit\.gg:\d+' playit_output.txt || true
-          
-          # Keep playit running
-          echo "playit tunnel started"
+          ngrok tcp 25565 --log=stdout --log-format=logfmt > ngrok.log 2>&1 &
+          sleep 10
+          # Get tunnel address from ngrok API
+          TUNNEL=$(curl -s http://127.0.0.1:4040/api/tunnels | python3 -c "import sys,json; d=json.load(sys.stdin); print(d['tunnels'][0]['public_url'])" 2>/dev/null || echo "unknown")
+          echo "NGROK_TUNNEL=$TUNNEL" >> $GITHUB_ENV
+          echo "=== Ngrok tunnel: $TUNNEL ==="
+          cat ngrok.log | tail -5
       
-      - name: Start Minecraft server
+      - name: Start server and keep alive
         run: |
           cd server
-          # Start server in background with reduced RAM
-          java -Xms1G -Xmx3G -XX:+UseG1GC -jar paper.jar nogui > server_output.txt 2>&1 &
+          nohup java -Xms1G -Xmx3G -XX:+UseG1GC -jar paper.jar nogui > server_output.txt 2>&1 &
           SERVER_PID=$!
           echo "Server PID: $SERVER_PID"
           
-          # Wait for server to start
-          echo "Waiting for server to start..."
-          for i in $(seq 1 60); do
+          # Wait up to 10 minutes for server to start
+          echo "Waiting for server..."
+          for i in $(seq 1 120); do
             if grep -q "Done" server_output.txt 2>/dev/null; then
-              echo "Server started successfully!"
+              echo "=== SERVER STARTED ==="
               break
             fi
             sleep 5
-            echo "Waiting... ($i/60)"
           done
           
-          # Show server output
-          echo "=== Server output (last 30 lines) ==="
-          tail -30 server_output.txt
+          # Show server status
+          echo "=== Server output (last 20 lines) ==="
+          tail -20 server_output.txt
           
-          # Show playit tunnel info
+          # Show tunnel
           echo ""
-          echo "=== Tunnel info ==="
-          cat ../playit_output.txt 2>/dev/null || true
-          playit list 2>&1 || true
+          echo "============================================"
+          echo "  CONNECT TO: ${{ env.NGROK_TUNNEL }}"
+          echo "  (replace tcp:// with direct address)"
+          echo "============================================"
           
-          # Get the public IP of the runner
-          echo ""
-          echo "=== Runner public IP ==="
-          curl -s ifconfig.me || true
-          echo ""
-          
-          # Keep server alive for specified duration
-          echo ""
-          echo "Server is running. Keeping alive for ${{ github.event.inputs.duration }} hours..."
-          
-          # Sleep in increments to keep workflow alive
+          # Keep alive
           HOURS=${{ github.event.inputs.duration }}
-          TOTAL_SECONDS=$((HOURS * 3600))
-          SLEEP_INTERVAL=300
-          ELAPSED=0
-          
-          while [ $ELAPSED -lt $TOTAL_SECONDS ]; do
-            sleep $SLEEP_INTERVAL
-            ELAPSED=$((ELAPSED + SLEEP_INTERVAL))
-            REMAINING=$((TOTAL_SECONDS - ELAPSED))
-            echo "[$(date)] Server running... $((REMAINING / 60)) minutes remaining"
-            
-            # Check if server is still alive
+          END=$((SECONDS + HOURS * 3600))
+          while [ $SECONDS -lt $END ]; do
+            sleep 60
             if ! kill -0 $SERVER_PID 2>/dev/null; then
-              echo "Server process died! Output:"
-              tail -50 server_output.txt
+              echo "Server died! Output:"
+              tail -30 server_output.txt
               break
             fi
+            REMAINING=$(( (END - SECONDS) / 60 ))
+            echo "[$(date)] Running... ${REMAINING}min left"
           done
           
-          echo "Time's up. Stopping server..."
+          echo "Stopping..."
           kill $SERVER_PID 2>/dev/null || true
-          sleep 5
-          echo "Server stopped."
-      
-      - name: Show connection info
-        run: |
-          echo "============================================"
-          echo "  HopNeo SMP Server - Connection Info"
-          echo "============================================"
-          echo ""
-          echo "Tunnel address (from playit.gg):"
-          cat server/../playit_output.txt 2>/dev/null | grep -oP '[\w-]+\.playit\.gg:\d+' || echo "Check playit output above"
-          echo ""
-          echo "Runner public IP:"
-          curl -s ifconfig.me
-          echo ""
-          echo "============================================"
-          echo "  Connect using the playit.gg address"
-          echo "  OR direct IP if firewall allows"
-          echo "============================================"
